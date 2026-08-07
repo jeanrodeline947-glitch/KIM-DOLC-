@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>KIM DOLCE — Connect</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #080b12;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 420px;
+      background: #111722;
+      border: 1px solid #202938;
+      border-radius: 24px;
+      padding: 30px 24px;
+      text-align: center;
+      box-shadow: 0 0 35px rgba(0, 191, 255, 0.15);
+    }
+
+    .logo {
+      width: 145px;
+      height: 145px;
+      object-fit: cover;
+      border-radius: 50%;
+      border: 3px solid #00bfff;
+      box-shadow: 0 0 25px rgba(0, 191, 255, 0.45);
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-size: 30px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #9ca8b8;
+      margin-bottom: 28px;
+      font-size: 15px;
+    }
+
+    .label {
+      display: block;
+      text-align: left;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+
+    .input {
+      width: 100%;
+      padding: 15px;
+      border-radius: 12px;
+      border: 1px solid #303b4d;
+      background: #080d15;
+      color: white;
+      font-size: 16px;
+      outline: none;
+      margin-bottom: 16px;
+    }
+
+    .input:focus {
+      border-color: #00bfff;
+      box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.1);
+    }
+
+    .connect {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 12px;
+      background: #00bfff;
+      color: #001018;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .connect:hover {
+      opacity: 0.9;
+    }
+
+    .connect:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .message {
+      display: none;
+      margin-top: 20px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #0b2230;
+      color: #9bdfff;
+      font-size: 14px;
+    }
+
+    .footer {
+      margin-top: 25px;
+      color: #667085;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <main class="container">
+
+    <!-- Logo KIM DOLCE -->
+    <img
+      src="/logo.png"
+      alt="KIM DOLCE"
+      class="logo"
+    >
+
+    <h1>KIM DOLCE</h1>
+
+    <p class="subtitle">
+      Connectez votre WhatsApp à votre bot
+    </p>
+
+    <form id="connectForm">
+
+      <label class="label" for="phone">
+        Numéro WhatsApp
+      </label>
+
+      <input
+        id="phone"
+        class="input"
+        type="tel"
+        placeholder="509XXXXXXXX"
+        autocomplete="tel"
+        required
+      >
+
+      <button
+        id="connectButton"
+        class="connect"
+        type="submit"
+      >
+        Connect WhatsApp
+      </button>
+
+    </form>
+
+    <div id="message" class="message"></div>
+
+    <div class="footer">
+      © 2026 KIM DOLCE
+    </div>
+
+  </main>
+
+  <script>
+    const form = document.getElementById("connectForm");
+    const phone = document.getElementById("phone");
+    const button = document.getElementById("connectButton");
+    const message = document.getElementById("message");
+
+    form.addEventListener("submit", async function(event) {
+      event.preventDefault();
+
+      const number = phone.value.replace(/\D/g, "");
+
+      if (!number) {
+        message.style.display = "block";
+        message.textContent = "❌ Entrez un numéro valide.";
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "Connexion...";
+
+      message.style.display = "block";
+      message.textContent = "⏳ Préparation de la connexion...";
+
+      /*
+       * L'API de pairing sera connectée ici dans l'étape suivante.
+       */
+
+      setTimeout(() => {
+        message.textContent =
+          "✅ Numéro reçu. Le système de connexion sera ajouté dans la prochaine étape.";
+
+        button.disabled = false;
+        button.textContent = "Connect WhatsApp";
+      }, 1000);
+    });
+  </script>
+
+</body>
+</html>
