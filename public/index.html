@@ -93,10 +93,6 @@
       cursor: pointer;
     }
 
-    .connect:hover {
-      opacity: 0.9;
-    }
-
     .connect:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -105,11 +101,22 @@
     .message {
       display: none;
       margin-top: 20px;
-      padding: 14px;
+      padding: 16px;
       border-radius: 12px;
       background: #0b2230;
       color: #9bdfff;
       font-size: 14px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .code {
+      display: block;
+      margin: 12px 0;
+      font-size: 28px;
+      font-weight: bold;
+      letter-spacing: 5px;
+      color: white;
     }
 
     .footer {
@@ -124,7 +131,6 @@
 
   <main class="container">
 
-    <!-- Logo KIM DOLCE -->
     <img
       src="/logo.png"
       alt="KIM DOLCE"
@@ -176,7 +182,7 @@
     const button = document.getElementById("connectButton");
     const message = document.getElementById("message");
 
-    form.addEventListener("submit", async function(event) {
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
 
       const number = phone.value.replace(/\D/g, "");
@@ -191,19 +197,59 @@
       button.textContent = "Connexion...";
 
       message.style.display = "block";
-      message.textContent = "⏳ Préparation de la connexion...";
+      message.textContent =
+        "⏳ Génération du code de connexion...";
 
-      /*
-       * L'API de pairing sera connectée ici dans l'étape suivante.
-       */
+      try {
+        const response = await fetch("/api/connect", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            phone: number
+          })
+        });
 
-      setTimeout(() => {
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.message || "Erreur de connexion."
+          );
+        }
+
+        if (data.pairingCode) {
+
+          message.innerHTML = `
+            🔐 <strong>PAIRING CODE</strong>
+
+            <span class="code">
+              ${data.pairingCode}
+            </span>
+
+            Ouvre WhatsApp → Appareils connectés →
+            Connecter un appareil → Connecter avec numéro.
+          `;
+
+        } else {
+
+          message.textContent =
+            "✅ Cette session est déjà connectée.";
+
+        }
+
+      } catch (error) {
+
+        console.error(error);
+
         message.textContent =
-          "✅ Numéro reçu. Le système de connexion sera ajouté dans la prochaine étape.";
+          "❌ " + error.message;
 
-        button.disabled = false;
-        button.textContent = "Connect WhatsApp";
-      }, 1000);
+      }
+
+      button.disabled = false;
+      button.textContent = "Connect WhatsApp";
     });
   </script>
 
