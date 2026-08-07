@@ -17,6 +17,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const sessions = new Map();
+const startTime = Date.now();
 
 const COMMANDS = [
     "menu", "help", "ping", "owner", "botinfo",
@@ -31,10 +32,13 @@ const COMMANDS = [
     "say", "quote", "time", "date", "support", "report"
 ];
 
-const startTime = Date.now();
+function cleanNumber(phone) {
+    return String(phone || "").replace(/\D/g, "");
+}
 
-function formatRuntime() {
+function runtime() {
     const seconds = Math.floor((Date.now() - startTime) / 1000);
+
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -43,112 +47,44 @@ function formatRuntime() {
     return `${days}j ${hours}h ${minutes}m ${secs}s`;
 }
 
-function isGroup(msg) {
-    return msg.key.remoteJid &&
-        msg.key.remoteJid.endsWith("@g.us");
-}
-
-async function getGroupMetadata(sock, jid) {
-    if (!isGroup({ key: { remoteJid: jid } })) return null;
-
-    try {
-        return await sock.groupMetadata(jid);
-    } catch {
-        return null;
-    }
+function isGroup(jid) {
+    return typeof jid === "string" && jid.endsWith("@g.us");
 }
 
 async function isBotAdmin(sock, jid) {
     try {
         const metadata = await sock.groupMetadata(jid);
-        const botId = sock.user.id.split(":")[0] + "@s.whatsapp.net";
 
-        const bot = metadata.participants.find(
-            p => p.id === botId || p.id.startsWith(sock.user.id.split(":")[0])
+        const botNumber = cleanNumber(
+            sock.user?.id?.split(":")[0]
         );
 
-        return bot?.admin === "admin" || bot?.admin === "superadmin";
+        const bot = metadata.participants.find(
+            p => cleanNumber(p.id.split("@")[0]) === botNumber
+        );
+
+        return !!(
+            bot &&
+            (bot.admin === "admin" || bot.admin === "superadmin")
+        );
+
     } catch {
         return false;
     }
 }
 
-async function createBot(phone) {
-    const number = String(phone || "").replace(/\D/g, "");
-
-    if (!number || number.length < 8) {
-        throw new Error("Numéro WhatsApp invalide.");
-    }
-
-    if (sessions.has(number)) {
-        return sessions.get(number);
-    }
-
-    const sessionPath = `./session/${number}`;
-
-    fs.mkdirSync(sessionPath, { recursive: true });
-
-    const { state, saveCreds } =
-        await useMultiFileAuthState(sessionPath);
-
-    const sock = makeWASocket({
-        auth: state,
-        logger: P({ level: "silent" }),
-        browser: [config.BOT_NAME, "Chrome", "1.0.0"]
-    });
-
-    sessions.set(number, sock);
-
-    sock.ev.on("creds.update", saveCreds);
-
-    sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
-        if (connection === "open") {
-            console.log(`🤖 ${number} connecté à KIM DOLCE`);
-        }
-
-        if (connection === "close") {
-            sessions.delete(number);
-
-            const code =
-                lastDisconnect?.error?.output?.statusCode;
-
-            if (code !== DisconnectReason.loggedOut) {
-                console.log(`🔄 Session ${number} fermée.`);
-            }
-        }
-    });
-
-    registerCommands(sock);
-
-    if (!state.creds.registered) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        const pairingCode =
-            await sock.requestPairingCode(number);
-
-        return {
-            sock,
-            pairingCode
-        };
-    }
-
-    return {
-        sock,
-        pairingCode: null
-    };
-}
-
-/* =========================
+/* =====================================================
    COMMANDES
-========================= */
+===================================================== */
 
 function registerCommands(sock) {
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
 
-        const msg = messages[0];
+        const msg = messages?.[0];
 
         if (!msg?.message) return;
+        if (msg.key.fromMe) return;
 
         const jid = msg.key.remoteJid;
 
@@ -274,16 +210,16 @@ function registerCommands(sock) {
 
 ⚡ Prefix : ${config.PREFIX}
 📦 Commandes : ${COMMANDS.length}
-⏱️ Uptime : ${formatRuntime()}`
+⏱️ Uptime : ${runtime()}`
                 });
                 return;
             }
 
-            /* RUNTIME / UPTIME */
+            /* RUNTIME */
 
             if (command === "runtime" || command === "uptime") {
                 await sock.sendMessage(jid, {
-                    text: `⏱️ KIM DOLCE actif depuis : ${formatRuntime()}`
+                    text: `⏱️ KIM DOLCE actif depuis : ${runtime()}`
                 });
                 return;
             }
@@ -301,7 +237,7 @@ function registerCommands(sock) {
 
             if (command === "status") {
                 await sock.sendMessage(jid, {
-                    text: "🟢 KIM DOLCE fonctionne correctement."
+                    text: "🟢 KIM DOLCE est en ligne."
                 });
                 return;
             }
@@ -310,7 +246,7 @@ function registerCommands(sock) {
 
             if (command === "time") {
                 await sock.sendMessage(jid, {
-                    text: `🕐 ${new Date().toLocaleTimeString()}`
+                    text: `🕐 ${new Date().toLocaleTimeString("fr-FR")}`
                 });
                 return;
             }
@@ -319,7 +255,7 @@ function registerCommands(sock) {
 
             if (command === "date") {
                 await sock.sendMessage(jid, {
-                    text: `📅 ${new Date().toLocaleDateString()}`
+                    text: `📅 ${new Date().toLocaleDateString("fr-FR")}`
                 });
                 return;
             }
@@ -327,6 +263,7 @@ function registerCommands(sock) {
             /* SAY */
 
             if (command === "say") {
+
                 if (!args.length) {
                     await sock.sendMessage(jid, {
                         text: `Utilisation : ${config.PREFIX}say texte`
@@ -337,36 +274,44 @@ function registerCommands(sock) {
                 await sock.sendMessage(jid, {
                     text: args.join(" ")
                 });
+
                 return;
             }
 
-            /* ME */
+            /* ME / PROFILE */
 
             if (command === "me" || command === "profile") {
+
+                const user =
+                    msg.key.participant ||
+                    msg.key.remoteJid;
+
                 await sock.sendMessage(jid, {
-                    text: `👤 Utilisateur : @${msg.key.participant?.split("@")[0] || "Utilisateur"}`,
-                    mentions: msg.key.participant
-                        ? [msg.key.participant]
-                        : []
+                    text: `👤 @${user.split("@")[0]}`,
+                    mentions: [user]
                 });
+
                 return;
             }
 
             /* JID / USERID */
 
             if (command === "jid" || command === "userid") {
+
                 await sock.sendMessage(jid, {
                     text: `🆔 ${msg.key.participant || jid}`
                 });
+
                 return;
             }
 
             /* GROUP ID */
 
             if (command === "groupid") {
-                if (!isGroup(msg)) {
+
+                if (!isGroup(jid)) {
                     await sock.sendMessage(jid, {
-                        text: "❌ Cette commande fonctionne seulement dans un groupe."
+                        text: "❌ Utilise cette commande dans un groupe."
                     });
                     return;
                 }
@@ -374,6 +319,7 @@ function registerCommands(sock) {
                 await sock.sendMessage(jid, {
                     text: `🆔 Group ID : ${jid}`
                 });
+
                 return;
             }
 
@@ -381,7 +327,7 @@ function registerCommands(sock) {
 
             if (command === "groupinfo" || command === "info") {
 
-                if (!isGroup(msg)) {
+                if (!isGroup(jid)) {
                     await sock.sendMessage(jid, {
                         text: "❌ Utilise cette commande dans un groupe."
                     });
@@ -405,61 +351,73 @@ function registerCommands(sock) {
 
             if (command === "admins") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 const metadata = await sock.groupMetadata(jid);
 
-                const admins = metadata.participants
-                    .filter(p => p.admin)
-                    .map(p => `@${p.id.split("@")[0]}`);
-
-                await sock.sendMessage(jid, {
-                    text: `👑 ADMINS\n\n${admins.join("\n")}`,
-                    mentions: metadata.participants
-                        .filter(p => p.admin)
-                        .map(p => p.id)
-                });
-
-                return;
-            }
-
-            /* TAG ALL / HIDETAG */
-
-            if (command === "tagall" || command === "hidetag") {
-
-                if (!isGroup(msg)) return;
-
-                const metadata = await sock.groupMetadata(jid);
+                const admins =
+                    metadata.participants.filter(p => p.admin);
 
                 const mentions =
-                    metadata.participants.map(p => p.id);
+                    admins.map(p => p.id);
 
-                const textMessage =
-                    args.length
-                        ? args.join(" ")
-                        : "📢 Attention tout le monde !";
-
-                const finalText =
-                    command === "tagall"
-                        ? `${textMessage}\n\n${mentions.map(x => "@" + x.split("@")[0]).join(" ")}`
-                        : textMessage;
+                const textAdmins =
+                    admins
+                        .map(p => `@${p.id.split("@")[0]}`)
+                        .join("\n");
 
                 await sock.sendMessage(jid, {
-                    text: finalText,
+                    text: `👑 ADMINS\n\n${textAdmins}`,
                     mentions
                 });
 
                 return;
             }
 
+            /* TAG ALL */
+
+            if (command === "tagall" || command === "hidetag") {
+
+                if (!isGroup(jid)) return;
+
+                const metadata = await sock.groupMetadata(jid);
+
+                const mentions =
+                    metadata.participants.map(p => p.id);
+
+                const message =
+                    args.length
+                        ? args.join(" ")
+                        : "📢 Attention tout le monde !";
+
+                if (command === "hidetag") {
+
+                    await sock.sendMessage(jid, {
+                        text: message,
+                        mentions
+                    });
+
+                } else {
+
+                    const tagged =
+                        mentions
+                            .map(x => `@${x.split("@")[0]}`)
+                            .join(" ");
+
+                    await sock.sendMessage(jid, {
+                        text: `${message}\n\n${tagged}`,
+                        mentions
+                    });
+                }
+
+                return;
+            }
+
             /* KICK / KICKALL */
 
-            if (
-                command === "kick" ||
-                command === "kickall"
-            ) {
+            if (command === "kick" || command === "kickall") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 if (!(await isBotAdmin(sock, jid))) {
                     await sock.sendMessage(jid, {
@@ -468,32 +426,53 @@ function registerCommands(sock) {
                     return;
                 }
 
-                const metadata = await sock.groupMetadata(jid);
+                const metadata =
+                    await sock.groupMetadata(jid);
 
-                const botId =
-                    sock.user.id.split(":")[0] + "@s.whatsapp.net";
+                const botNumber =
+                    cleanNumber(sock.user?.id?.split(":")[0]);
 
-                const targets = metadata.participants
-                    .filter(p => {
-                        if (p.id === botId) return false;
-                        if (p.admin) return false;
+                let targets = [];
 
-                        if (command === "kickall") {
-                            return true;
-                        }
+                if (command === "kick") {
 
-                        const quoted =
-                            msg.message.extendedTextMessage?.contextInfo?.participant;
+                    const target =
+                        msg.message
+                            .extendedTextMessage
+                            ?.contextInfo
+                            ?.participant;
 
-                        return quoted === p.id;
-                    })
-                    .map(p => p.id);
+                    if (!target) {
+                        await sock.sendMessage(jid, {
+                            text:
+`❌ Réponds au message de la personne à retirer.
+
+Exemple :
+Répondre au message → .kick`
+                        });
+                        return;
+                    }
+
+                    targets = [target];
+
+                } else {
+
+                    targets = metadata.participants
+                        .filter(p => {
+                            const number =
+                                cleanNumber(p.id.split("@")[0]);
+
+                            return (
+                                number !== botNumber &&
+                                !p.admin
+                            );
+                        })
+                        .map(p => p.id);
+                }
 
                 if (!targets.length) {
                     await sock.sendMessage(jid, {
-                        text: command === "kickall"
-                            ? "❌ Aucun membre retiré."
-                            : "❌ Réponds au message de la personne à retirer."
+                        text: "❌ Aucun membre pouvant être retiré."
                     });
                     return;
                 }
@@ -505,7 +484,8 @@ function registerCommands(sock) {
                 );
 
                 await sock.sendMessage(jid, {
-                    text: `✅ ${targets.length} membre(s) retiré(s).`
+                    text:
+                        `✅ ${targets.length} membre(s) retiré(s).`
                 });
 
                 return;
@@ -515,7 +495,7 @@ function registerCommands(sock) {
 
             if (command === "add") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 if (!(await isBotAdmin(sock, jid))) {
                     await sock.sendMessage(jid, {
@@ -524,11 +504,13 @@ function registerCommands(sock) {
                     return;
                 }
 
-                const number = (args[0] || "").replace(/\D/g, "");
+                const number =
+                    cleanNumber(args[0]);
 
                 if (!number) {
                     await sock.sendMessage(jid, {
-                        text: `Utilisation : ${config.PREFIX}add 509XXXXXXXX`
+                        text:
+                            `Utilisation : ${config.PREFIX}add 509XXXXXXXX`
                     });
                     return;
                 }
@@ -539,17 +521,18 @@ function registerCommands(sock) {
                     "add"
                 );
 
+                await sock.sendMessage(jid, {
+                    text: "✅ Demande d'ajout envoyée."
+                });
+
                 return;
             }
 
             /* PROMOTE / DEMOTE */
 
-            if (
-                command === "promote" ||
-                command === "demote"
-            ) {
+            if (command === "promote" || command === "demote") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 if (!(await isBotAdmin(sock, jid))) {
                     await sock.sendMessage(jid, {
@@ -559,13 +542,15 @@ function registerCommands(sock) {
                 }
 
                 const target =
-                    msg.message.extendedTextMessage
+                    msg.message
+                        .extendedTextMessage
                         ?.contextInfo
                         ?.participant;
 
                 if (!target) {
                     await sock.sendMessage(jid, {
-                        text: "❌ Réponds au message de la personne."
+                        text:
+                            "❌ Réponds au message de la personne."
                     });
                     return;
                 }
@@ -578,6 +563,13 @@ function registerCommands(sock) {
                         : "demote"
                 );
 
+                await sock.sendMessage(jid, {
+                    text:
+                        command === "promote"
+                            ? "👑 Membre promu administrateur."
+                            : "⬇️ Administrateur rétrogradé."
+                });
+
                 return;
             }
 
@@ -585,7 +577,7 @@ function registerCommands(sock) {
 
             if (command === "open" || command === "close") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 if (!(await isBotAdmin(sock, jid))) {
                     await sock.sendMessage(jid, {
@@ -602,19 +594,20 @@ function registerCommands(sock) {
                 );
 
                 await sock.sendMessage(jid, {
-                    text: command === "close"
-                        ? "🔒 Groupe fermé aux membres."
-                        : "🔓 Groupe ouvert aux membres."
+                    text:
+                        command === "close"
+                            ? "🔒 Groupe fermé."
+                            : "🔓 Groupe ouvert."
                 });
 
                 return;
             }
 
-            /* LINK */
+            /* LINK / INVITE */
 
             if (command === "link" || command === "invite") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 if (!(await isBotAdmin(sock, jid))) {
                     await sock.sendMessage(jid, {
@@ -627,7 +620,8 @@ function registerCommands(sock) {
                     await sock.groupInviteCode(jid);
 
                 await sock.sendMessage(jid, {
-                    text: `🔗 https://chat.whatsapp.com/${code}`
+                    text:
+                        `🔗 https://chat.whatsapp.com/${code}`
                 });
 
                 return;
@@ -637,51 +631,72 @@ function registerCommands(sock) {
 
             if (command === "revoke") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 if (!(await isBotAdmin(sock, jid))) return;
 
                 await sock.groupRevokeInvite(jid);
 
                 await sock.sendMessage(jid, {
-                    text: "✅ L'ancien lien du groupe a été révoqué."
+                    text:
+                        "✅ Ancien lien révoqué."
                 });
 
                 return;
             }
 
-            /* SETNAME */
+            /* SET NAME */
 
             if (command === "setname") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 if (!(await isBotAdmin(sock, jid))) return;
 
-                if (!args.length) return;
+                if (!args.length) {
+                    await sock.sendMessage(jid, {
+                        text:
+                            `Utilisation : ${config.PREFIX}setname Nouveau nom`
+                    });
+                    return;
+                }
 
                 await sock.groupUpdateSubject(
                     jid,
                     args.join(" ")
                 );
 
+                await sock.sendMessage(jid, {
+                    text: "✅ Nom du groupe modifié."
+                });
+
                 return;
             }
 
-            /* SETDESC */
+            /* SET DESCRIPTION */
 
             if (command === "setdesc") {
 
-                if (!isGroup(msg)) return;
+                if (!isGroup(jid)) return;
 
                 if (!(await isBotAdmin(sock, jid))) return;
 
-                if (!args.length) return;
+                if (!args.length) {
+                    await sock.sendMessage(jid, {
+                        text:
+                            `Utilisation : ${config.PREFIX}setdesc Description`
+                    });
+                    return;
+                }
 
                 await sock.groupUpdateDescription(
                     jid,
                     args.join(" ")
                 );
+
+                await sock.sendMessage(jid, {
+                    text: "✅ Description modifiée."
+                });
 
                 return;
             }
@@ -689,9 +704,10 @@ function registerCommands(sock) {
             /* GROUP */
 
             if (command === "group") {
+
                 await sock.sendMessage(jid, {
                     text:
-`👥 COMMANDES GROUPE
+`👥 KIM DOLCE — GROUPE
 
 .kick
 .add
@@ -704,165 +720,517 @@ function registerCommands(sock) {
 .tagall
 .hidetag
 .link
-.revoke`
+.revoke
+.setname
+.setdesc`
                 });
+
                 return;
             }
 
             /* RULES */
 
             if (command === "rules") {
+
                 await sock.sendMessage(jid, {
                     text:
 `📜 RÈGLEMENT KIM DOLCE
 
 1. Respectez les membres.
 2. Pas de spam.
-3. Pas de liens non autorisés.
-4. Respectez les administrateurs.`
+3. Pas de liens dangereux.
+4. Respectez les administrateurs.
+5. Gardez le groupe propre.`
                 });
+
                 return;
             }
 
-            /* SETRULES */
+            /* SET RULES */
 
             if (command === "setrules") {
-                await sock.sendMessage(jid, {
-                    text: "⚙️ Cette commande est réservée à la configuration du bot."
-                });
-                return;
-            }
 
-            /* WELCOME / GOODBYE */
-
-            if (
-                command === "welcome" ||
-                command === "goodbye"
-            ) {
                 await sock.sendMessage(jid, {
                     text:
-                        command === "welcome"
-                            ? "👋 Welcome activé."
-                            : "👋 Goodbye activé."
+                        "⚙️ Configuration des règles disponible dans le panneau."
                 });
+
                 return;
             }
 
-            /* PROTECTION */
+            /* WELCOME */
 
-            if (
-                command === "antilink" ||
-                command === "antispam" ||
-                command === "antimention"
-            ) {
+            if (command === "welcome") {
+
                 await sock.sendMessage(jid, {
-                    text: `🛡️ ${command} : configuration prête.`
+                    text:
+                        "👋 Welcome : configuration disponible."
                 });
+
                 return;
             }
 
-            /* AUTRES COMMANDES */
+            /* GOODBYE */
+
+            if (command === "goodbye") {
+
+                await sock.sendMessage(jid, {
+                    text:
+                        "👋 Goodbye : configuration disponible."
+                });
+
+                return;
+            }
+
+            /* ANTILINK */
+
+            if (command === "antilink") {
+
+                await sock.sendMessage(jid, {
+                    text:
+                        "🛡️ Anti-link : configuration disponible."
+                });
+
+                return;
+            }
+
+            /* ANTISPAM */
+
+            if (command === "antispam") {
+
+                await sock.sendMessage(jid, {
+                    text:
+                        "🛡️ Anti-spam : configuration disponible."
+                });
+
+                return;
+            }
+
+            /* ANTIMENTION */
+
+            if (command === "antimention") {
+
+                await sock.sendMessage(jid, {
+                    text:
+                        "🛡️ Anti-mention : configuration disponible."
+                });
+
+                return;
+            }
+
+            /* MUTE */
+
+            if (command === "mute") {
+
+                if (!isGroup(jid)) return;
+
+                if (!(await isBotAdmin(sock, jid))) {
+                    await sock.sendMessage(jid, {
+                        text:
+                            "❌ Le bot doit être administrateur."
+                    });
+                    return;
+                }
+
+                await sock.groupSettingUpdate(
+                    jid,
+                    "announcement"
+                );
+
+                await sock.sendMessage(jid, {
+                    text: "🔇 Groupe mis en mode annonce."
+                });
+
+                return;
+            }
+
+            /* UNMUTE */
+
+            if (command === "unmute") {
+
+                if (!isGroup(jid)) return;
+
+                if (!(await isBotAdmin(sock, jid))) {
+                    await sock.sendMessage(jid, {
+                        text:
+                            "❌ Le bot doit être administrateur."
+                    });
+                    return;
+                }
+
+                await sock.groupSettingUpdate(
+                    jid,
+                    "not_announcement"
+                );
+
+                await sock.sendMessage(jid, {
+                    text: "🔊 Groupe ouvert."
+                });
+
+                return;
+            }
+
+            /* SUPPORT */
 
             if (command === "support") {
+
                 await sock.sendMessage(jid, {
-                    text: "🛠️ Support KIM DOLCE."
+                    text:
+                        "🛠️ Support KIM DOLCE."
                 });
+
                 return;
             }
+
+            /* REPORT */
 
             if (command === "report") {
+
                 await sock.sendMessage(jid, {
-                    text: "📩 Rapport reçu."
+                    text:
+                        "📩 Rapport reçu. Merci."
                 });
+
                 return;
             }
+
+            /* QUOTE */
 
             if (command === "quote") {
+
                 await sock.sendMessage(jid, {
-                    text: "💬 KIM DOLCE — reste concentré sur ton objectif."
+                    text:
+                        "💬 KIM DOLCE : Reste concentré sur ton objectif. 🚀"
                 });
+
                 return;
             }
+
+            /* DELETE */
 
             if (command === "delete") {
+
                 await sock.sendMessage(jid, {
-                    text: "🗑️ Utilise la suppression native de WhatsApp pour tes propres messages."
+                    text:
+                        "🗑️ Utilise la fonction de suppression de WhatsApp."
                 });
+
                 return;
             }
+
+            /* POLL */
 
             if (command === "poll") {
+
                 await sock.sendMessage(jid, {
-                    text: "📊 Utilise la fonction sondage native de WhatsApp pour créer un sondage."
+                    text:
+                        "📊 Utilise la fonction Sondage de WhatsApp."
                 });
+
                 return;
             }
 
+            /* SET PP */
+
             if (command === "setpp") {
+
                 await sock.sendMessage(jid, {
-                    text: "🖼️ La gestion du logo/profil sera ajoutée dans le panneau."
+                    text:
+                        "🖼️ Gestion de la photo de profil disponible dans le panneau."
                 });
+
                 return;
             }
 
         } catch (error) {
-            console.error("❌ Commande :", command, error);
 
-            await sock.sendMessage(jid, {
-                text: "❌ Une erreur est survenue."
-            });
+            console.error(
+                `❌ Erreur commande .${command}:`,
+                error
+            );
+
+            try {
+                await sock.sendMessage(jid, {
+                    text:
+                        "❌ Une erreur est survenue avec cette commande."
+                });
+            } catch {}
         }
     });
 }
 
-/* =========================
-   API CONNECT
-========================= */
+/* =====================================================
+   CREATION D'UNE SESSION WHATSAPP
+===================================================== */
+
+async function createBot(phone) {
+
+    const number = cleanNumber(phone);
+
+    if (!number || number.length < 8) {
+        throw new Error("Numéro WhatsApp invalide.");
+    }
+
+    if (sessions.has(number)) {
+
+        const existing = sessions.get(number);
+
+        if (existing.pairingCode) {
+            return existing;
+        }
+
+        return {
+            sock: existing.sock,
+            pairingCode: null
+        };
+    }
+
+    const sessionPath =
+        path.join(__dirname, "session", number);
+
+    fs.mkdirSync(sessionPath, {
+        recursive: true
+    });
+
+    const { state, saveCreds } =
+        await useMultiFileAuthState(sessionPath);
+
+    const sock = makeWASocket({
+        auth: state,
+        logger: P({
+            level: "silent"
+        }),
+        browser: [
+            config.BOT_NAME || "KIM DOLCE",
+            "Chrome",
+            "1.0.0"
+        ],
+        markOnlineOnConnect: false
+    });
+
+    const session = {
+        sock,
+        pairingCode: null,
+        registered: state.creds.registered
+    };
+
+    sessions.set(number, session);
+
+    sock.ev.on(
+        "creds.update",
+        saveCreds
+    );
+
+    registerCommands(sock);
+
+    sock.ev.on(
+        "connection.update",
+        ({ connection, lastDisconnect }) => {
+
+            if (connection === "open") {
+
+                console.log(
+                    `🤖 KIM DOLCE connecté : ${number}`
+                );
+
+                session.pairingCode = null;
+                session.registered = true;
+            }
+
+            if (connection === "close") {
+
+                const code =
+                    lastDisconnect
+                        ?.error
+                        ?.output
+                        ?.statusCode;
+
+                console.log(
+                    `🔴 Session fermée : ${number} (${code || "inconnu"})`
+                );
+
+                sessions.delete(number);
+
+                if (
+                    code !== DisconnectReason.loggedOut
+                ) {
+                    console.log(
+                        "ℹ️ La session pourra être reconnectée depuis le site."
+                    );
+                }
+            }
+        }
+    );
+
+    /*
+     * Si le compte n'est pas encore enregistré,
+     * on attend que le socket soit initialisé avant
+     * de demander le pairing code.
+     */
+
+    if (!state.creds.registered) {
+
+        await new Promise(resolve =>
+            setTimeout(resolve, 5000)
+        );
+
+        try {
+
+            const pairingCode =
+                await sock.requestPairingCode(number);
+
+            session.pairingCode = pairingCode;
+
+            console.log(
+                `🔐 Nouveau pairing code généré pour ${number}`
+            );
+
+            return {
+                sock,
+                pairingCode
+            };
+
+        } catch (error) {
+
+            console.error(
+                "❌ Erreur pairing code:",
+                error
+            );
+
+            sessions.delete(number);
+
+            try {
+                sock.ws?.close();
+            } catch {}
+
+            throw new Error(
+                "Impossible de générer le code WhatsApp. Vérifiez le numéro et réessayez."
+            );
+        }
+    }
+
+    return {
+        sock,
+        pairingCode: null
+    };
+}
+
+/* =====================================================
+   API WEB
+===================================================== */
 
 app.get("/", (req, res) => {
+
     res.sendFile(
-        path.join(__dirname, "public", "index.html")
+        path.join(
+            __dirname,
+            "public",
+            "index.html"
+        )
     );
 });
+
 
 app.post("/api/connect", async (req, res) => {
 
     try {
 
-        const { phone } = req.body;
+        const phone =
+            cleanNumber(req.body?.phone);
 
         if (!phone) {
+
             return res.status(400).json({
                 success: false,
-                message: "Numéro requis."
+                message:
+                    "Numéro WhatsApp requis."
             });
         }
 
-        const result = await createBot(phone);
+        if (phone.length < 8) {
+
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Numéro WhatsApp invalide."
+            });
+        }
+
+        console.log(
+            `📱 Nouvelle demande de connexion : ${phone}`
+        );
+
+        const result =
+            await createBot(phone);
 
         return res.json({
             success: true,
-            pairingCode: result.pairingCode || null,
-            message: result.pairingCode
-                ? "Pairing code généré."
-                : "Session déjà connectée."
+            pairingCode:
+                result.pairingCode || null,
+            message:
+                result.pairingCode
+                    ? "Nouveau pairing code généré."
+                    : "Cette session est déjà connectée."
         });
 
     } catch (error) {
 
-        console.error("❌ API :", error);
+        console.error(
+            "❌ API /api/connect:",
+            error
+        );
 
         return res.status(500).json({
             success: false,
-            message: "Impossible de créer la connexion."
+            message:
+                error.message ||
+                "Impossible de créer la connexion."
         });
     }
 });
 
-/* =========================
-   SERVER
-========================= */
 
-app.listen(PORT, () => {
-    console.log(`🌐 KIM DOLCE lancé sur le port ${PORT}`);
+/* =====================================================
+   HEALTH CHECK
+===================================================== */
+
+app.get("/health", (req, res) => {
+
+    res.status(200).json({
+        status: "online",
+        bot: "KIM DOLCE",
+        uptime: runtime()
+    });
+});
+
+
+/* =====================================================
+   SERVEUR
+===================================================== */
+
+app.listen(PORT, "0.0.0.0", () => {
+
+    console.log(
+        "===================================="
+    );
+
+    console.log(
+        "🤖 KIM DOLCE"
+    );
+
+    console.log(
+        `🌐 Serveur : port ${PORT}`
+    );
+
+    console.log(
+        `📦 ${COMMANDS.length} commandes disponibles`
+    );
+
+    console.log(
+        "🟢 Serveur prêt"
+    );
+
+    console.log(
+        "===================================="
+    );
 });
