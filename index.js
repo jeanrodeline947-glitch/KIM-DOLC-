@@ -6,79 +6,79 @@ const {
 
 const P = require("pino");
 const express = require("express");
+const QRCode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
-const QRCode = require("qrcode");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const PREFIX = ".";
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const sessions = new Map();
 
-/* =====================================================
-   50 COMMANDES
-===================================================== */
+/* =========================
+   CONFIG
+========================= */
 
-const COMMANDS = {
+const PREFIX = ".";
 
-    menu: "Affiche toutes les commandes",
-    help: "Affiche l'aide",
-    ping: "Teste le bot",
-    alive: "Vérifie si le bot est en ligne",
-    bot: "Informations du bot",
-    owner: "Informations du propriétaire",
-    info: "Informations générales",
-    status: "État du bot",
-    runtime: "Temps de fonctionnement",
-    version: "Version du bot",
-    time: "Heure actuelle",
-    date: "Date actuelle",
-    jid: "Affiche le JID du chat",
-    id: "Affiche l'identifiant du chat",
-    groupinfo: "Informations du groupe",
-    groupname: "Affiche le nom du groupe",
-    members: "Liste des membres",
-    admins: "Liste des administrateurs",
-    tagall: "Mentionne tous les membres",
-    tagadmins: "Mentionne les administrateurs",
-    online: "Vérifie la connexion",
-    echo: "Répète un texte",
-    say: "Envoie un texte",
-    calc: "Calculatrice simple",
-    uppercase: "Convertit en majuscules",
-    lowercase: "Convertit en minuscules",
-    reverse: "Inverse un texte",
-    count: "Compte les caractères",
-    prefix: "Affiche le préfixe",
-    rules: "Affiche les règles",
-    support: "Affiche le support",
-    repo: "Affiche le projet",
-    source: "Affiche les informations du projet",
-    privacy: "Informations de confidentialité",
-    botinfo: "Informations techniques",
-    uptime: "Temps en ligne",
-    memberscount: "Nombre de membres",
-    adminsCount: "Nombre d'administrateurs",
-    promote: "Promouvoir un membre",
-    demote: "Rétrograder un administrateur",
-    kick: "Retirer un membre",
-    add: "Ajouter un membre",
-    mute: "Fermer le groupe aux membres",
-    unmute: "Ouvrir le groupe aux membres",
-    groupdesc: "Afficher la description",
-    clear: "Effacer la commande reçue",
-    test: "Tester le système"
-};
+const COMMANDS = [
+    "menu",
+    "help",
+    "ping",
+    "alive",
+    "bot",
+    "owner",
+    "info",
+    "status",
+    "runtime",
+    "uptime",
+    "version",
+    "time",
+    "date",
+    "jid",
+    "id",
+    "groupinfo",
+    "groupname",
+    "members",
+    "admins",
+    "memberscount",
+    "tagall",
+    "tagadmins",
+    "echo",
+    "say",
+    "calc",
+    "uppercase",
+    "lowercase",
+    "reverse",
+    "count",
+    "prefix",
+    "rules",
+    "support",
+    "repo",
+    "source",
+    "privacy",
+    "botinfo",
+    "test",
+    "promote",
+    "demote",
+    "kick",
+    "add",
+    "mute",
+    "unmute",
+    "groupdesc",
+    "adminsCount",
+    "online",
+    "clear"
+];
 
 const startTime = Date.now();
 
-/* =====================================================
-   UTILITAIRES
-===================================================== */
+/* =========================
+   OUTILS
+========================= */
 
 function cleanNumber(number) {
     return String(number || "").replace(/\D/g, "");
@@ -94,66 +94,45 @@ function getText(msg) {
     );
 }
 
-function getMentioned(msg) {
+function getMentions(msg) {
     return (
         msg.message?.extendedTextMessage
-            ?.contextInfo?.mentionedJid || []
+            ?.contextInfo
+            ?.mentionedJid || []
     );
 }
 
-function formatRuntime(ms) {
-    const sec = Math.floor(ms / 1000);
-    const d = Math.floor(sec / 86400);
-    const h = Math.floor((sec % 86400) / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-
-    return `${d}j ${h}h ${m}m ${s}s`;
-}
-
-async function isGroupAdmin(sock, msg) {
-
-    if (!msg.key.remoteJid?.endsWith("@g.us")) {
-        return false;
-    }
-
-    const metadata =
-        await sock.groupMetadata(
-            msg.key.remoteJid
-        );
-
-    const participant =
-        metadata.participants.find(
-            p => p.id === msg.key.participant
-        );
-
-    return (
-        participant?.admin === "admin" ||
-        participant?.admin === "superadmin"
+function runtime() {
+    const seconds = Math.floor(
+        (Date.now() - startTime) / 1000
     );
+
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor(
+        (seconds % 86400) / 3600
+    );
+    const minutes = Math.floor(
+        (seconds % 3600) / 60
+    );
+    const secs = seconds % 60;
+
+    return `${days}j ${hours}h ${minutes}m ${secs}s`;
 }
 
-async function getGroup(sock, jid) {
-    return await sock.groupMetadata(jid);
-}
+/* =========================
+   START WHATSAPP
+========================= */
 
-/* =====================================================
-   SESSION WHATSAPP + QR
-===================================================== */
+async function startWhatsApp(number) {
 
-async function startWhatsApp(phone) {
-
-    const number = cleanNumber(phone);
-
-    const sessionPath =
-        path.join(
-            __dirname,
-            "session",
-            number
-        );
+    const sessionDir = path.join(
+        __dirname,
+        "sessions",
+        number
+    );
 
     fs.mkdirSync(
-        sessionPath,
+        sessionDir,
         { recursive: true }
     );
 
@@ -161,7 +140,7 @@ async function startWhatsApp(phone) {
         state,
         saveCreds
     } = await useMultiFileAuthState(
-        sessionPath
+        sessionDir
     );
 
     const sock = makeWASocket({
@@ -183,10 +162,14 @@ async function startWhatsApp(phone) {
     const session = {
         sock,
         qr: null,
-        connected: false
+        connected: false,
+        created: Date.now()
     };
 
-    sessions.set(number, session);
+    sessions.set(
+        number,
+        session
+    );
 
     sock.ev.on(
         "creds.update",
@@ -195,7 +178,7 @@ async function startWhatsApp(phone) {
 
     sock.ev.on(
         "connection.update",
-        async update => {
+        async (update) => {
 
             const {
                 connection,
@@ -203,41 +186,74 @@ async function startWhatsApp(phone) {
                 qr
             } = update;
 
+            /* =====================
+               QR
+            ===================== */
+
             if (qr) {
+
+                console.log(
+                    "📱 Nouveau QR pour:",
+                    number
+                );
 
                 try {
 
                     session.qr =
-                        await QRCode.toDataURL(qr);
+                        await QRCode.toDataURL(
+                            qr,
+                            {
+                                width: 300,
+                                margin: 2
+                            }
+                        );
+
+                    session.connected =
+                        false;
 
                     console.log(
-                        "📱 QR généré pour",
+                        "✅ QR disponible pour:",
                         number
                     );
 
-                } catch (e) {
+                } catch (error) {
 
                     console.error(
-                        "QR ERROR:",
-                        e
+                        "❌ QR ERROR:",
+                        error
                     );
                 }
             }
 
-            if (connection === "open") {
+            /* =====================
+               CONNECTÉ
+            ===================== */
 
-                session.connected = true;
+            if (
+                connection === "open"
+            ) {
+
+                session.connected =
+                    true;
+
                 session.qr = null;
 
                 console.log(
-                    "🤖 KIM DOLCE CONNECTÉ :",
+                    "🤖 KIM DOLCE connecté:",
                     number
                 );
             }
 
-            if (connection === "close") {
+            /* =====================
+               FERMÉ
+            ===================== */
 
-                session.connected = false;
+            if (
+                connection === "close"
+            ) {
+
+                session.connected =
+                    false;
 
                 const code =
                     lastDisconnect
@@ -246,27 +262,36 @@ async function startWhatsApp(phone) {
                         ?.statusCode;
 
                 console.log(
-                    "Connexion fermée :",
+                    "⚠️ Connexion fermée:",
+                    number,
+                    "code:",
                     code
                 );
 
-                sessions.delete(number);
+                /*
+                 * On ne détruit pas immédiatement
+                 * la session afin que le site puisse
+                 * encore récupérer le QR.
+                 */
 
                 if (
-                    code !==
+                    code ===
                     DisconnectReason.loggedOut
                 ) {
+
+                    sessions.delete(number);
+
                     console.log(
-                        "Session arrêtée. Reconnexion via le site."
+                        "❌ Session déconnectée."
                     );
                 }
             }
         }
     );
 
-    /* =================================================
+    /* =========================
        COMMANDES
-    ================================================= */
+    ========================= */
 
     sock.ev.on(
         "messages.upsert",
@@ -276,18 +301,22 @@ async function startWhatsApp(phone) {
 
                 const msg = messages[0];
 
-                if (!msg?.message) return;
+                if (!msg?.message) {
+                    return;
+                }
 
-                if (
-                    msg.key.fromMe
-                ) return;
+                if (msg.key.fromMe) {
+                    return;
+                }
 
                 const text =
                     getText(msg).trim();
 
                 if (
                     !text.startsWith(PREFIX)
-                ) return;
+                ) {
+                    return;
+                }
 
                 const parts =
                     text
@@ -296,51 +325,53 @@ async function startWhatsApp(phone) {
                         .split(/\s+/);
 
                 const command =
-                    (parts.shift() || "")
-                        .toLowerCase();
+                    (
+                        parts.shift() || ""
+                    ).toLowerCase();
 
                 const args = parts;
-
-                if (!COMMANDS[command]) {
-                    return;
-                }
-
                 const jid =
                     msg.key.remoteJid;
 
-                /* =====================================
-                   MENU
-                ===================================== */
+                if (
+                    !COMMANDS.includes(
+                        command
+                    )
+                ) {
+                    return;
+                }
+
+                /* MENU */
 
                 if (
                     command === "menu" ||
                     command === "help"
                 ) {
 
-                    const list =
-                        Object.entries(
-                            COMMANDS
-                        )
-                        .map(
-                            ([cmd, desc]) =>
-                                `┃ .${cmd} — ${desc}`
-                        )
-                        .join("\n");
+                    const menu =
+                        COMMANDS
+                            .map(
+                                c =>
+                                    `┃ .${c}`
+                            )
+                            .join("\n");
 
                     await sock.sendMessage(
                         jid,
                         {
                             text:
-`╭━━━〔 🤖 KIM DOLCE 〕━━━╮
+`╭━━〔 🤖 KIM DOLCE 〕━━╮
 ┃
-${list}
+${menu}
 ┃
-╰━━━━━━━━━━━━━━━━━━━━╯`
+╰━━━━━━━━━━━━━━━━━━╯`
                         }
                     );
 
                     return;
                 }
+
+                /* PING */
 
                 if (
                     command === "ping" ||
@@ -351,28 +382,14 @@ ${list}
                         jid,
                         {
                             text:
-                                "🏓 KIM DOLCE : Pong !"
+                                "🏓 Pong !"
                         }
                     );
 
                     return;
                 }
 
-                if (
-                    command === "alive" ||
-                    command === "online"
-                ) {
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "🟢 KIM DOLCE est en ligne."
-                        }
-                    );
-
-                    return;
-                }
+                /* BOT */
 
                 if (
                     command === "bot" ||
@@ -386,15 +403,17 @@ ${list}
                             text:
 `🤖 KIM DOLCE
 
-⚡ WhatsApp Bot
-📌 Préfixe : ${PREFIX}
-🔐 QR Login : activé
-🟢 Statut : Online`
+🟢 Statut : Online
+📱 WhatsApp Bot
+🔧 Préfixe : ${PREFIX}
+⏱️ Uptime : ${runtime()}`
                         }
                     );
 
                     return;
                 }
+
+                /* OWNER */
 
                 if (
                     command === "owner"
@@ -404,27 +423,33 @@ ${list}
                         jid,
                         {
                             text:
-                                "👑 KIM DOLCE\nBot officiel."
+                                "👑 KIM DOLCE"
                         }
                     );
 
                     return;
                 }
 
+                /* STATUS */
+
                 if (
-                    command === "status"
+                    command === "status" ||
+                    command === "alive" ||
+                    command === "online"
                 ) {
 
                     await sock.sendMessage(
                         jid,
                         {
                             text:
-                                `🟢 Bot : Online\n⏱️ Uptime : ${formatRuntime(Date.now() - startTime)}`
+                                `🟢 En ligne\n⏱️ ${runtime()}`
                         }
                     );
 
                     return;
                 }
+
+                /* RUNTIME */
 
                 if (
                     command === "runtime" ||
@@ -435,12 +460,14 @@ ${list}
                         jid,
                         {
                             text:
-                                `⏱️ Uptime : ${formatRuntime(Date.now() - startTime)}`
+                                `⏱️ ${runtime()}`
                         }
                     );
 
                     return;
                 }
+
+                /* VERSION */
 
                 if (
                     command === "version"
@@ -456,6 +483,8 @@ ${list}
 
                     return;
                 }
+
+                /* TIME */
 
                 if (
                     command === "time"
@@ -476,6 +505,8 @@ ${list}
                     return;
                 }
 
+                /* DATE */
+
                 if (
                     command === "date"
                 ) {
@@ -495,6 +526,8 @@ ${list}
                     return;
                 }
 
+                /* PREFIX */
+
                 if (
                     command === "prefix"
                 ) {
@@ -503,12 +536,14 @@ ${list}
                         jid,
                         {
                             text:
-                                `🔧 Préfixe actuel : ${PREFIX}`
+                                `🔧 Préfixe : ${PREFIX}`
                         }
                     );
 
                     return;
                 }
+
+                /* JID */
 
                 if (
                     command === "jid" ||
@@ -526,6 +561,8 @@ ${list}
                     return;
                 }
 
+                /* ECHO */
+
                 if (
                     command === "echo" ||
                     command === "say"
@@ -535,13 +572,6 @@ ${list}
                         args.join(" ");
 
                     if (!value) {
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text:
-                                    "❌ Écris un texte."
-                            }
-                        );
                         return;
                     }
 
@@ -554,6 +584,8 @@ ${list}
 
                     return;
                 }
+
+                /* UPPERCASE */
 
                 if (
                     command === "uppercase"
@@ -572,6 +604,8 @@ ${list}
                     return;
                 }
 
+                /* LOWERCASE */
+
                 if (
                     command === "lowercase"
                 ) {
@@ -588,6 +622,8 @@ ${list}
 
                     return;
                 }
+
+                /* REVERSE */
 
                 if (
                     command === "reverse"
@@ -608,6 +644,8 @@ ${list}
                     return;
                 }
 
+                /* COUNT */
+
                 if (
                     command === "count"
                 ) {
@@ -616,12 +654,14 @@ ${list}
                         jid,
                         {
                             text:
-                                `🔢 Caractères : ${args.join(" ").length}`
+                                `🔢 ${args.join(" ").length} caractères`
                         }
                     );
 
                     return;
                 }
+
+                /* CALCUL */
 
                 if (
                     command === "calc"
@@ -634,13 +674,15 @@ ${list}
                         !/^[0-9+\-*/().% ]+$/
                             .test(expression)
                     ) {
+
                         await sock.sendMessage(
                             jid,
                             {
                                 text:
-                                    "❌ Expression invalide."
+                                    "❌ Calcul invalide."
                             }
                         );
+
                         return;
                     }
 
@@ -648,14 +690,14 @@ ${list}
 
                         const result =
                             Function(
-                                `"use strict"; return (${expression})`
+                                `"use strict";return(${expression})`
                             )();
 
                         await sock.sendMessage(
                             jid,
                             {
                                 text:
-                                    `🧮 Résultat : ${result}`
+                                    `🧮 ${result}`
                             }
                         );
 
@@ -673,397 +715,7 @@ ${list}
                     return;
                 }
 
-                /* =====================================
-                   GROUPE
-                ===================================== */
-
-                if (
-                    !jid.endsWith("@g.us")
-                ) {
-
-                    if (
-                        [
-                            "groupinfo",
-                            "groupname",
-                            "members",
-                            "admins",
-                            "tagall",
-                            "tagadmins",
-                            "promote",
-                            "demote",
-                            "kick",
-                            "add",
-                            "mute",
-                            "unmute",
-                            "groupdesc",
-                            "memberscount",
-                            "adminsCount"
-                        ].includes(command)
-                    ) {
-
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text:
-                                    "❌ Cette commande fonctionne uniquement dans un groupe."
-                            }
-                        );
-
-                        return;
-                    }
-                }
-
-                const group =
-                    jid.endsWith("@g.us")
-                        ? await getGroup(
-                            sock,
-                            jid
-                        )
-                        : null;
-
-                if (
-                    command === "groupinfo"
-                ) {
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-`👥 INFORMATIONS DU GROUPE
-
-📌 Nom : ${group.subject}
-👤 Membres : ${group.participants.length}
-📝 Description :
-${group.desc || "Aucune"}`
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "groupname"
-                ) {
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                `👥 ${group.subject}`
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "members" ||
-                    command === "memberscount"
-                ) {
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                `👥 Nombre de membres : ${group.participants.length}`
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "admins" ||
-                    command === "adminsCount"
-                ) {
-
-                    const admins =
-                        group.participants
-                            .filter(
-                                p =>
-                                    p.admin
-                            );
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                `👑 Administrateurs : ${admins.length}`
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "groupdesc"
-                ) {
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                `📝 ${group.desc || "Aucune description."}`
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "tagall" ||
-                    command === "tagadmins"
-                ) {
-
-                    const participants =
-                        command === "tagadmins"
-                            ? group.participants
-                                .filter(
-                                    p => p.admin
-                                )
-                            : group.participants;
-
-                    const mentions =
-                        participants
-                            .map(
-                                p => p.id
-                            );
-
-                    const text =
-                        participants
-                            .map(
-                                p =>
-                                    `@${p.id.split("@")[0]}`
-                            )
-                            .join(" ");
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text,
-                            mentions
-                        }
-                    );
-
-                    return;
-                }
-
-                /* =====================================
-                   ADMIN
-                ===================================== */
-
-                const adminCommands = [
-                    "promote",
-                    "demote",
-                    "kick",
-                    "add",
-                    "mute",
-                    "unmute"
-                ];
-
-                if (
-                    adminCommands.includes(
-                        command
-                    )
-                ) {
-
-                    const admin =
-                        await isGroupAdmin(
-                            sock,
-                            msg
-                        );
-
-                    if (!admin) {
-
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text:
-                                    "❌ Commande réservée aux administrateurs."
-                            }
-                        );
-
-                        return;
-                    }
-                }
-
-                const mentioned =
-                    getMentioned(msg);
-
-                if (
-                    command === "promote"
-                ) {
-
-                    if (!mentioned.length) {
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text:
-                                    "❌ Mentionne un membre."
-                            }
-                        );
-                        return;
-                    }
-
-                    await sock.groupParticipantsUpdate(
-                        jid,
-                        mentioned,
-                        "promote"
-                    );
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "✅ Membre promu administrateur."
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "demote"
-                ) {
-
-                    if (!mentioned.length) {
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text:
-                                    "❌ Mentionne un administrateur."
-                            }
-                        );
-                        return;
-                    }
-
-                    await sock.groupParticipantsUpdate(
-                        jid,
-                        mentioned,
-                        "demote"
-                    );
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "✅ Administrateur rétrogradé."
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "kick"
-                ) {
-
-                    if (!mentioned.length) {
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text:
-                                    "❌ Mentionne le membre à retirer."
-                            }
-                        );
-                        return;
-                    }
-
-                    await sock.groupParticipantsUpdate(
-                        jid,
-                        mentioned,
-                        "remove"
-                    );
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "✅ Membre retiré."
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "add"
-                ) {
-
-                    const number =
-                        cleanNumber(
-                            args[0]
-                        );
-
-                    if (!number) {
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text:
-                                    "❌ Exemple : .add 509XXXXXXXX"
-                            }
-                        );
-                        return;
-                    }
-
-                    await sock.groupParticipantsUpdate(
-                        jid,
-                        [
-                            number + "@s.whatsapp.net"
-                        ],
-                        "add"
-                    );
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "✅ Demande d'ajout envoyée."
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "mute"
-                ) {
-
-                    await sock.groupSettingUpdate(
-                        jid,
-                        "announcement"
-                    );
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "🔒 Groupe fermé aux membres."
-                        }
-                    );
-
-                    return;
-                }
-
-                if (
-                    command === "unmute"
-                ) {
-
-                    await sock.groupSettingUpdate(
-                        jid,
-                        "not_announcement"
-                    );
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "🔓 Groupe ouvert aux membres."
-                        }
-                    );
-
-                    return;
-                }
+                /* RULES */
 
                 if (
                     command === "rules"
@@ -1075,16 +727,17 @@ ${group.desc || "Aucune"}`
                             text:
 `📜 RÈGLES KIM DOLCE
 
-1. Respectez les membres.
+1. Respect.
 2. Pas de spam.
-3. Pas de contenu illégal.
-4. Respectez les administrateurs.
-5. Utilisez les commandes correctement.`
+3. Pas d'abus.
+4. Respecter les administrateurs.`
                         }
                     );
 
                     return;
                 }
+
+                /* SUPPORT */
 
                 if (
                     command === "support"
@@ -1094,28 +747,14 @@ ${group.desc || "Aucune"}`
                         jid,
                         {
                             text:
-                                "🛠️ Support : KIM DOLCE"
+                                "🛠️ Support KIM DOLCE"
                         }
                     );
 
                     return;
                 }
 
-                if (
-                    command === "repo" ||
-                    command === "source"
-                ) {
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "💻 Projet : KIM DOLCE"
-                        }
-                    );
-
-                    return;
-                }
+                /* PRIVACY */
 
                 if (
                     command === "privacy"
@@ -1125,46 +764,460 @@ ${group.desc || "Aucune"}`
                         jid,
                         {
                             text:
-                                "🔐 Ne partagez jamais votre QR WhatsApp ou vos informations de connexion."
+                                "🔐 Ne partage jamais ton QR WhatsApp."
                         }
                     );
 
                     return;
                 }
 
+                /* GROUP */
+
                 if (
-                    command === "clear"
+                    !jid.endsWith("@g.us")
                 ) {
 
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            text:
-                                "🧹 Commande traitée."
-                        }
-                    );
+                    if (
+                        [
+                            "groupinfo",
+                            "groupname",
+                            "members",
+                            "admins",
+                            "memberscount",
+                            "adminsCount",
+                            "tagall",
+                            "tagadmins",
+                            "promote",
+                            "demote",
+                            "kick",
+                            "add",
+                            "mute",
+                            "unmute",
+                            "groupdesc"
+                        ].includes(command)
+                    ) {
 
-                    return;
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    "❌ Cette commande fonctionne dans un groupe."
+                            }
+                        );
+
+                        return;
+                    }
+                }
+
+                if (
+                    jid.endsWith("@g.us")
+                ) {
+
+                    const metadata =
+                        await sock.groupMetadata(
+                            jid
+                        );
+
+                    /* GROUP INFO */
+
+                    if (
+                        command ===
+                        "groupinfo"
+                    ) {
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+`👥 ${metadata.subject}
+
+👤 Membres : ${metadata.participants.length}
+📝 Description :
+${metadata.desc || "Aucune"}`
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* GROUP NAME */
+
+                    if (
+                        command ===
+                        "groupname"
+                    ) {
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    `👥 ${metadata.subject}`
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* MEMBERS */
+
+                    if (
+                        command ===
+                        "members" ||
+                        command ===
+                        "memberscount"
+                    ) {
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    `👥 ${metadata.participants.length} membres`
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* ADMINS */
+
+                    if (
+                        command ===
+                        "admins" ||
+                        command ===
+                        "adminsCount"
+                    ) {
+
+                        const admins =
+                            metadata
+                                .participants
+                                .filter(
+                                    p => p.admin
+                                );
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    `👑 ${admins.length} administrateurs`
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* TAG ALL */
+
+                    if (
+                        command ===
+                        "tagall"
+                    ) {
+
+                        const mentions =
+                            metadata
+                                .participants
+                                .map(
+                                    p => p.id
+                                );
+
+                        const text =
+                            mentions
+                                .map(
+                                    id =>
+                                        `@${id.split("@")[0]}`
+                                )
+                                .join(" ");
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text,
+                                mentions
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* TAG ADMINS */
+
+                    if (
+                        command ===
+                        "tagadmins"
+                    ) {
+
+                        const mentions =
+                            metadata
+                                .participants
+                                .filter(
+                                    p => p.admin
+                                )
+                                .map(
+                                    p => p.id
+                                );
+
+                        const text =
+                            mentions
+                                .map(
+                                    id =>
+                                        `@${id.split("@")[0]}`
+                                )
+                                .join(" ");
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text,
+                                mentions
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* DESCRIPTION */
+
+                    if (
+                        command ===
+                        "groupdesc"
+                    ) {
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    `📝 ${metadata.desc || "Aucune description."}`
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* ADMIN CHECK */
+
+                    const sender =
+                        msg.key.participant;
+
+                    const senderData =
+                        metadata
+                            .participants
+                            .find(
+                                p =>
+                                    p.id ===
+                                    sender
+                            );
+
+                    const isAdmin =
+                        senderData?.admin;
+
+                    const adminCommands = [
+                        "promote",
+                        "demote",
+                        "kick",
+                        "add",
+                        "mute",
+                        "unmute"
+                    ];
+
+                    if (
+                        adminCommands.includes(
+                            command
+                        ) &&
+                        !isAdmin
+                    ) {
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    "❌ Commande réservée aux administrateurs."
+                            }
+                        );
+
+                        return;
+                    }
+
+                    const mentions =
+                        getMentions(msg);
+
+                    /* PROMOTE */
+
+                    if (
+                        command ===
+                        "promote"
+                    ) {
+
+                        if (!mentions.length) {
+                            return;
+                        }
+
+                        await sock
+                            .groupParticipantsUpdate(
+                                jid,
+                                mentions,
+                                "promote"
+                            );
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    "✅ Membre promu."
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* DEMOTE */
+
+                    if (
+                        command ===
+                        "demote"
+                    ) {
+
+                        if (!mentions.length) {
+                            return;
+                        }
+
+                        await sock
+                            .groupParticipantsUpdate(
+                                jid,
+                                mentions,
+                                "demote"
+                            );
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    "✅ Membre rétrogradé."
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* KICK */
+
+                    if (
+                        command ===
+                        "kick"
+                    ) {
+
+                        if (!mentions.length) {
+                            return;
+                        }
+
+                        await sock
+                            .groupParticipantsUpdate(
+                                jid,
+                                mentions,
+                                "remove"
+                            );
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    "✅ Membre retiré."
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* ADD */
+
+                    if (
+                        command ===
+                        "add"
+                    ) {
+
+                        const num =
+                            cleanNumber(
+                                args[0]
+                            );
+
+                        if (!num) {
+                            return;
+                        }
+
+                        await sock
+                            .groupParticipantsUpdate(
+                                jid,
+                                [
+                                    num +
+                                    "@s.whatsapp.net"
+                                ],
+                                "add"
+                            );
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    "✅ Demande d'ajout envoyée."
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* MUTE */
+
+                    if (
+                        command ===
+                        "mute"
+                    ) {
+
+                        await sock
+                            .groupSettingUpdate(
+                                jid,
+                                "announcement"
+                            );
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    "🔒 Groupe fermé aux membres."
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /* UNMUTE */
+
+                    if (
+                        command ===
+                        "unmute"
+                    ) {
+
+                        await sock
+                            .groupSettingUpdate(
+                                jid,
+                                "not_announcement"
+                            );
+
+                        await sock.sendMessage(
+                            jid,
+                            {
+                                text:
+                                    "🔓 Groupe ouvert."
+                            }
+                        );
+
+                        return;
+                    }
                 }
 
             } catch (error) {
 
                 console.error(
-                    "COMMAND ERROR:",
+                    "❌ Command error:",
                     error
                 );
-
-                try {
-
-                    await sock.sendMessage(
-                        msg.key.remoteJid,
-                        {
-                            text:
-                                "❌ Une erreur est survenue."
-                        }
-                    );
-
-                } catch {}
             }
         }
     );
@@ -1172,9 +1225,9 @@ ${group.desc || "Aucune"}`
     return session;
 }
 
-/* =====================================================
-   API
-===================================================== */
+/* =========================
+   PAGE
+========================= */
 
 app.get(
     "/",
@@ -1190,6 +1243,10 @@ app.get(
     }
 );
 
+/* =========================
+   CONNECT API
+========================= */
+
 app.post(
     "/api/connect",
     async (req, res) => {
@@ -1202,28 +1259,78 @@ app.post(
                 );
 
             if (
-                !/^\d{8,15}$/.test(number)
+                !/^\d{8,15}$/.test(
+                    number
+                )
             ) {
 
                 return res.status(400).json({
                     success: false,
                     message:
-                        "Numéro invalide."
+                        "Numéro WhatsApp invalide."
                 });
             }
 
-            const session =
-                await startWhatsApp(
-                    number
-                );
+            /* SI SESSION EXISTE */
 
-            let tries = 0;
+            let session =
+                sessions.get(number);
 
-            while (
-                !session.qr &&
-                !session.connected &&
-                tries < 30
+            if (
+                session?.connected
             ) {
+
+                return res.json({
+                    success: true,
+                    connected: true,
+                    qr: null,
+                    message:
+                        "WhatsApp est déjà connecté."
+                });
+            }
+
+            /* CRÉER SESSION */
+
+            if (!session) {
+
+                session =
+                    await startWhatsApp(
+                        number
+                    );
+            }
+
+            /*
+             * ATTENDRE LE QR
+             * maximum 20 secondes
+             */
+
+            for (
+                let i = 0;
+                i < 20;
+                i++
+            ) {
+
+                if (
+                    session.connected
+                ) {
+
+                    return res.json({
+                        success: true,
+                        connected: true,
+                        qr: null
+                    });
+                }
+
+                if (
+                    session.qr
+                ) {
+
+                    return res.json({
+                        success: true,
+                        connected: false,
+                        qr: session.qr
+                    });
+                }
 
                 await new Promise(
                     resolve =>
@@ -1232,40 +1339,38 @@ app.post(
                             1000
                         )
                 );
-
-                tries++;
             }
 
-            return res.json({
+            return res.status(408).json({
 
-                success: true,
-
-                connected:
-                    session.connected,
-
-                qr:
-                    session.qr,
+                success: false,
 
                 message:
-                    session.connected
-                        ? "WhatsApp connecté."
-                        : "QR généré."
+                    "Le QR WhatsApp n'a pas été généré à temps. Réessaie."
             });
 
         } catch (error) {
 
             console.error(
+                "❌ API ERROR:",
                 error
             );
 
             return res.status(500).json({
+
                 success: false,
+
                 message:
+                    "Erreur serveur : " +
                     error.message
             });
         }
     }
 );
+
+/* =========================
+   STATUS
+========================= */
 
 app.get(
     "/api/status/:phone",
@@ -1280,29 +1385,42 @@ app.get(
             sessions.get(number);
 
         res.json({
+
             success: true,
+
             connected:
-                session?.connected || false,
+                session?.connected ||
+                false,
+
             qr:
-                session?.qr || null
+                session?.qr ||
+                null
         });
     }
 );
+
+/* =========================
+   HEALTH
+========================= */
 
 app.get(
     "/health",
     (req, res) => {
 
         res.status(200).json({
-            status: "online",
-            bot: "KIM DOLCE"
+
+            status: "ok",
+
+            bot: "KIM DOLCE",
+
+            uptime: runtime()
         });
     }
 );
 
-/* =====================================================
+/* =========================
    SERVER
-===================================================== */
+========================= */
 
 app.listen(
     PORT,
@@ -1310,7 +1428,7 @@ app.listen(
     () => {
 
         console.log(
-            "================================="
+            "================================"
         );
 
         console.log(
@@ -1318,20 +1436,20 @@ app.listen(
         );
 
         console.log(
-            "🌐 PORT :",
+            "🌐 PORT:",
             PORT
         );
 
         console.log(
-            "🟢 SERVEUR PRÊT"
+            "📱 QR SYSTEM READY"
         );
 
         console.log(
-            "📱 QR LOGIN ACTIVÉ"
+            "🟢 SERVER ONLINE"
         );
 
         console.log(
-            "================================="
+            "================================"
         );
     }
 );
