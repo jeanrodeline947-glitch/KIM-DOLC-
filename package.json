@@ -3,11 +3,16 @@
   "version": "1.0.0",
   "description": "KIM DOLCE WhatsApp Bot",
   "main": "index.js",
+  "author": "KIM DOLCE",
+  "license": "MIT",
   "scripts": {
     "start": "node index.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.18",
+    "@whiskeysockets/baileys": "6.7.23",
     "express": "4.21.2",
     "pino": "9.4.0",
     "qrcode": "1.5.4"
