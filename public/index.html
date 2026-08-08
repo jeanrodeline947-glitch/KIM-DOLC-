@@ -1,415 +1,337 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>KIM DOLCE - WhatsApp</title>
+  <title>KIM DOLCE - WhatsApp Bot</title>
 
-    <style>
-        * {
-            box-sizing: border-box;
-        }
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
 
-        body {
-            margin: 0;
-            min-height: 100vh;
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #111827, #1f2937);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-            color: white;
-        }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #111827, #1e1b4b);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      color: white;
+    }
 
-        .container {
-            width: 100%;
-            max-width: 420px;
-            background: #ffffff;
-            color: #111827;
-            border-radius: 24px;
-            padding: 30px 22px;
-            text-align: center;
-            box-shadow: 0 20px 50px rgba(0,0,0,.35);
-        }
+    .container {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(15px);
+      border-radius: 25px;
+      padding: 30px 22px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
 
-        .logo {
-            width: 90px;
-            height: 90px;
-            margin: 0 auto 15px;
-            border-radius: 50%;
-            background: linear-gradient(135deg,#25D366,#128C7E);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            font-size: 38px;
-            font-weight: bold;
-        }
+    /* LOGO */
+    .logo {
+      width: 110px;
+      height: 110px;
+      margin: 0 auto 18px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 42px;
+      font-weight: 900;
+      color: white;
+      border: 4px solid rgba(255,255,255,0.25);
+      box-shadow:
+        0 0 30px rgba(124,58,237,0.7),
+        inset 0 0 20px rgba(255,255,255,0.15);
+    }
 
-        h1 {
-            margin: 5px 0;
-            font-size: 28px;
-        }
+    .title {
+      font-size: 30px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
 
-        .subtitle {
-            color: #6b7280;
-            margin-bottom: 25px;
-        }
+    .subtitle {
+      color: #d1d5db;
+      font-size: 15px;
+      margin-bottom: 28px;
+    }
 
-        label {
-            display: block;
-            text-align: left;
-            font-weight: bold;
-            margin-bottom: 8px;
-        }
+    .label {
+      display: block;
+      text-align: left;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #e5e7eb;
+    }
 
-        input {
-            width: 100%;
-            padding: 15px;
-            border: 1px solid #d1d5db;
-            border-radius: 12px;
-            font-size: 17px;
-            outline: none;
-        }
+    input {
+      width: 100%;
+      padding: 15px;
+      border-radius: 13px;
+      border: 1px solid rgba(255,255,255,0.15);
+      outline: none;
+      background: rgba(0,0,0,0.25);
+      color: white;
+      font-size: 16px;
+      margin-bottom: 15px;
+    }
 
-        input:focus {
-            border-color: #25D366;
-        }
+    input::placeholder {
+      color: #9ca3af;
+    }
 
-        button {
-            width: 100%;
-            margin-top: 15px;
-            padding: 15px;
-            border: 0;
-            border-radius: 12px;
-            background: #25D366;
-            color: white;
-            font-size: 17px;
-            font-weight: bold;
-            cursor: pointer;
-        }
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 13px;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
 
-        button:disabled {
-            opacity: .6;
-        }
+    button:hover {
+      transform: translateY(-2px);
+    }
 
-        #message {
-            margin-top: 18px;
-            padding: 12px;
-            border-radius: 10px;
-            display: none;
-        }
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
 
-        .success {
-            display: block !important;
-            background: #dcfce7;
-            color: #166534;
-        }
+    #message {
+      margin-top: 18px;
+      font-size: 14px;
+      color: #d1d5db;
+    }
 
-        .error {
-            display: block !important;
-            background: #fee2e2;
-            color: #991b1b;
-        }
+    /* QR */
+    #qrBox {
+      display: none;
+      margin-top: 25px;
+      background: white;
+      padding: 15px;
+      border-radius: 18px;
+    }
 
-        #qrBox {
-            display: none;
-            margin-top: 25px;
-        }
+    #qrImage {
+      width: 100%;
+      max-width: 300px;
+      display: block;
+      margin: auto;
+    }
 
-        #qrBox img {
-            width: 300px;
-            max-width: 100%;
-            border-radius: 12px;
-            border: 8px solid white;
-            box-shadow: 0 5px 20px rgba(0,0,0,.15);
-        }
+    .qrTitle {
+      color: #111827;
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
 
-        .instructions {
-            margin-top: 15px;
-            color: #4b5563;
-            line-height: 1.5;
-            font-size: 14px;
-        }
-
-        .loading {
-            display: none;
-            margin-top: 15px;
-        }
-
-        .spinner {
-            width: 30px;
-            height: 30px;
-            border: 4px solid #ddd;
-            border-top-color: #25D366;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: auto;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-    </style>
+    .footer {
+      margin-top: 25px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+  </style>
 </head>
 
 <body>
 
-<div class="container">
+  <div class="container">
 
-    <div class="logo">KD</div>
-
-    <h1>KIM DOLCE</h1>
-
-    <div class="subtitle">
-        Connectez votre WhatsApp à votre bot
+    <!-- LOGO KIM DOLCE -->
+    <div class="logo">
+      KD
     </div>
 
-    <label for="phone">
-        Numéro WhatsApp
+    <div class="title">
+      KIM DOLCE
+    </div>
+
+    <div class="subtitle">
+      Connectez votre WhatsApp à votre bot
+    </div>
+
+    <label class="label">
+      Numéro WhatsApp
     </label>
 
     <input
-        id="phone"
-        type="tel"
-        placeholder="509XXXXXXXX"
-        autocomplete="tel"
+      id="phone"
+      type="tel"
+      placeholder="509XXXXXXXX"
+      autocomplete="tel"
     >
 
     <button id="connectBtn">
-        📱 Générer QR WhatsApp
+      📱 Générer QR WhatsApp
     </button>
 
-    <div id="loading" class="loading">
-        <div class="spinner"></div>
-        <p>Connexion à WhatsApp...</p>
+    <div id="message">
+      Entrez votre numéro WhatsApp pour commencer.
     </div>
 
-    <div id="message"></div>
-
+    <!-- QR -->
     <div id="qrBox">
 
-        <h3>📱 Scanne ce QR avec WhatsApp</h3>
+      <div class="qrTitle">
+        📱 Scanne ce QR avec WhatsApp
+      </div>
 
-        <img id="qrImage" src="" alt="QR WhatsApp">
-
-        <div class="instructions">
-            WhatsApp → Appareils connectés
-            → Connecter un appareil
-            → Scanne le QR ci-dessus.
-        </div>
+      <img
+        id="qrImage"
+        alt="QR WhatsApp"
+      >
 
     </div>
 
-</div>
+    <div class="footer">
+      🤖 KIM DOLCE WhatsApp Bot
+    </div>
+
+  </div>
 
 <script>
 
-const phoneInput =
-    document.getElementById("phone");
+const button =
+  document.getElementById("connectBtn");
 
-const connectBtn =
-    document.getElementById("connectBtn");
+const phoneInput =
+  document.getElementById("phone");
 
 const message =
-    document.getElementById("message");
+  document.getElementById("message");
 
 const qrBox =
-    document.getElementById("qrBox");
+  document.getElementById("qrBox");
 
 const qrImage =
-    document.getElementById("qrImage");
+  document.getElementById("qrImage");
 
-const loading =
-    document.getElementById("loading");
 
+button.addEventListener(
+  "click",
+  async () => {
 
-function showMessage(text, type) {
+    const phone =
+      phoneInput.value.trim();
 
-    message.textContent = text;
+    if (!phone) {
 
-    message.className = "";
+      message.textContent =
+        "❌ Entre ton numéro WhatsApp.";
 
-    message.classList.add(type);
-}
-
-
-function hideMessage() {
-
-    message.style.display = "none";
-
-    message.className = "";
-}
-
-
-connectBtn.addEventListener(
-    "click",
-    async function () {
-
-        const phone =
-            phoneInput.value
-                .replace(/\D/g, "");
-
-        if (!phone) {
-
-            showMessage(
-                "❌ Entre ton numéro WhatsApp.",
-                "error"
-            );
-
-            return;
-        }
-
-        if (
-            phone.length < 8 ||
-            phone.length > 15
-        ) {
-
-            showMessage(
-                "❌ Numéro WhatsApp invalide.",
-                "error"
-            );
-
-            return;
-        }
-
-
-        qrBox.style.display = "none";
-
-        hideMessage();
-
-        loading.style.display = "block";
-
-        connectBtn.disabled = true;
-
-
-        try {
-
-            console.log(
-                "📱 Envoi numéro:",
-                phone
-            );
-
-
-            const response =
-                await fetch(
-                    "/api/connect",
-                    {
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body: JSON.stringify({
-                            phone: phone
-                        })
-                    }
-                );
-
-
-            console.log(
-                "HTTP:",
-                response.status
-            );
-
-
-            const data =
-                await response.json();
-
-
-            console.log(
-                "Réponse:",
-                data
-            );
-
-
-            loading.style.display = "none";
-
-
-            if (!data.success) {
-
-                showMessage(
-                    "❌ " +
-                    (
-                        data.message ||
-                        "Impossible de générer le QR."
-                    ),
-                    "error"
-                );
-
-                connectBtn.disabled = false;
-
-                return;
-            }
-
-
-            if (data.connected) {
-
-                showMessage(
-                    "✅ WhatsApp est déjà connecté !",
-                    "success"
-                );
-
-                connectBtn.disabled = false;
-
-                return;
-            }
-
-
-            if (data.qr) {
-
-                qrImage.src =
-                    data.qr;
-
-                qrBox.style.display =
-                    "block";
-
-                showMessage(
-                    "✅ QR WhatsApp généré !",
-                    "success"
-                );
-
-                connectBtn.disabled = false;
-
-                return;
-            }
-
-
-            showMessage(
-                "⏳ QR non reçu. Réessaie dans quelques secondes.",
-                "error"
-            );
-
-            connectBtn.disabled = false;
-
-
-        } catch (error) {
-
-            console.error(
-                "Erreur:",
-                error
-            );
-
-            loading.style.display = "none";
-
-            showMessage(
-                "❌ Erreur de connexion au serveur.",
-                "error"
-            );
-
-            connectBtn.disabled = false;
-        }
-
+      return;
     }
+
+    button.disabled = true;
+
+    button.textContent =
+      "⏳ Génération du QR...";
+
+    message.textContent =
+      "Connexion au serveur...";
+
+    qrBox.style.display = "none";
+
+    try {
+
+      const response =
+        await fetch(
+          "/api/connect",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body: JSON.stringify({
+              phone: phone
+            })
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+
+        throw new Error(
+          data.message ||
+          "Erreur serveur."
+        );
+      }
+
+      if (data.connected) {
+
+        message.textContent =
+          "✅ WhatsApp est déjà connecté.";
+
+        return;
+      }
+
+      if (data.qr) {
+
+        qrImage.src =
+          data.qr;
+
+        qrBox.style.display =
+          "block";
+
+        message.textContent =
+          "✅ QR généré ! Ouvre WhatsApp → Appareils connectés → Connecter un appareil.";
+
+        button.textContent =
+          "🔄 Générer un nouveau QR";
+
+      } else {
+
+        message.textContent =
+          "❌ Aucun QR reçu. Réessaie.";
+
+      }
+
+    } catch (error) {
+
+      console.error(error);
+
+      message.textContent =
+        "❌ " + error.message;
+
+    } finally {
+
+      button.disabled = false;
+
+      if (
+        button.textContent.includes(
+          "Génération"
+        )
+      ) {
+
+        button.textContent =
+          "📱 Générer QR WhatsApp";
+      }
+    }
+  }
 );
 
 </script>
 
 </body>
-</html>
+        </html>
